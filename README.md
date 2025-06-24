@@ -1,4 +1,4 @@
-# A test of higher and lower fractional volumes of resistance training upon arm and thigh muscle area: A multi-site, multi-study series of randomised controlled trials
+# A test of higher and lower fractional volumes of resistance training upon arm and thigh muscle area: A multi-site randomised trial
 
 ## Abstract
   TO COMPLETE
