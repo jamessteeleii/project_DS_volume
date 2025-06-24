@@ -233,10 +233,10 @@ sim_separate <- function(params) {
       add_ranef(error_arm = sigma_arm,
                 error_thigh = sigma_thigh) |>
       # rescale the standardised effects to the current variance estimates
-      mutate(b_time_arm = b_time * (sd_participant_arm^2 + sd_site_arm^2 + error_arm^2), 
-             b_cond_time_arm = b_cond_time * (sd_participant_arm^2 + sd_site_arm^2 + error_arm^2),
-             b_time_thigh = b_time * (sd_participant_thigh^2 + sd_site_thigh^2 + error_thigh^2), 
-             b_cond_time_thigh = b_cond_time * (sd_participant_thigh^2 + sd_site_thigh^2 + error_thigh^2)) |>
+      mutate(b_time_arm = b_time * sqrt(sd_participant_arm^2 + sd_site_arm^2 + error_arm^2), 
+             b_cond_time_arm = b_cond_time * sqrt(sd_participant_arm^2 + sd_site_arm^2 + error_arm^2),
+             b_time_thigh = b_time * sqrt(sd_participant_thigh^2 + sd_site_thigh^2 + error_thigh^2), 
+             b_cond_time_thigh = b_cond_time * sqrt(sd_participant_thigh^2 + sd_site_thigh^2 + error_thigh^2)) |>
       # calculate outcomes based on assumed model
       mutate(ma_z = case_when(
         outcome == "thigh" ~ (b0 + u_site_thigh + u_participant_thigh) + (b_time_thigh * time) + (b_cond_time_thigh * cond_dummy * time) + error_thigh,
@@ -359,5 +359,174 @@ sim_separate <- function(params) {
   })
   
   
+}
+
+plot_sim <- function(sims) {
+  sim_result_power_meta_re <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "meta_re") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "meta_re")
+  
+  sim_result_power_meta_fe <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "meta_fe") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "meta_fe")
+  
+  sim_result_power_all <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "pooled") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "pooled")
+  
+  sim_result_power_all_fixed <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "pooled_fixed") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "pooled_fixed")
+  
+  sim_result_power_all_random <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "pooled_fixed") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "pooled_random")
+  
+  sim_result_power_all_disp <- sims |> 
+    bind_rows() |>
+    filter(term == "time:cond_dummy" & model == "pooled_disp") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .01, na.rm=TRUE),
+              power = mean(p.value < .01, na.rm=TRUE),
+              ci.lower = prop.test(total, 1000)$conf.int[1],
+              ci.upper = prop.test(total, 1000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "pooled_disp")
+  
+  sim_result_power_singly <- sims |> 
+    bind_rows() |>
+    mutate(
+      model = case_when(
+        model == "upper" | model == "lower" ~ "single_studies",
+        .default = model
+      )
+    ) |>
+    filter(term == "time:cond_dummy" & model == "single_studies") |>
+    pivot_longer(c("p.value", "p.value.equiv"), 
+                 names_to = "test", 
+                 values_to = "p.value") |> 
+    mutate(test = case_when(test == "p.value" ~ "Difference",
+                            test == "p.value.equiv" ~ "Equivalence")) |>
+    group_by(participant_n, dropout_prop, test) |>
+    summarise(total = sum(p.value < .005, na.rm=TRUE),
+              power = mean(p.value < .005, na.rm=TRUE),
+              ci.lower = prop.test(total, 2000)$conf.int[1],
+              ci.upper = prop.test(total, 2000)$conf.int[2],
+              .groups = "drop") |>
+    mutate(model = "single_studies")
+  
+  
+  sim_result_power <- bind_rows(sim_result_power_meta_fe, sim_result_power_meta_re,
+                                sim_result_power_all,
+                                sim_result_power_all_random, sim_result_power_all_fixed,
+                                sim_result_power_all_disp,
+                                sim_result_power_singly) |>
+    mutate(
+      model = factor(model, levels = c("single_studies", "pooled", "pooled_fixed", "pooled_random", "pooled_disp", "meta_fe", "meta_re"))
+    ) |>
+    mutate(
+      model = case_when(
+        model == "single_studies" ~ "Single outcome models (alpha adjusted)",
+        model == "pooled" ~ "Pooled outcomes model",
+        model == "pooled_fixed" ~ "Pooled outcomes model (fixed effects of outcome)",
+        model == "pooled_random" ~ "Pooled outcomes model (random effects of outcome)",
+        model == "pooled_disp" ~ "Pooled outcomes model (outcome as predictor on sigma)",
+        model == "meta_fe" ~ "Single outcome models (fixed effect meta-analysis of estimates)",
+        model == "meta_re" ~ "Single outcome models (random effect meta-analysis of estimates)",
+        
+      )
+    )
+  
+  
+  
+  cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+            "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+  
+  
+  sim_result_power |>
+    mutate(dropout_label = "Dropout Proportion") |>
+    ggplot(aes(x = participant_n, y = power, color = model)) +
+    geom_hline(yintercept = c(0.95,0.8), linetype = "dashed") +
+    geom_pointrange(aes(ymin = ci.lower, ymax = ci.upper), size = 0.1) +
+    # geom_point() +
+    geom_line(size = 0.5) +
+    scale_colour_manual(values=cbp1, labels = function(x) str_wrap(x, width = 20)) +
+    ggh4x::facet_nested(dropout_label + dropout_prop ~ test) +
+    labs(
+      x = "Total Number of Participants per Site (N)",
+      y = "Power (1-\u03b2)",
+      color = "Modelling approach",
+      title = "Sample Size Estimation (N per Site)",
+      subtitle = expression(~italic(y)[ijtk]~" = (\u03b2"[0]~"+ "~u[k]~" + "~u[i]~") + \u03b2"[1]~"time"[t]~" + \u03b2"[2]~"time:condition"[jt]~" + \u03f5"[ijtk]),
+      caption = glue::glue("Fixed effect parameters: time = 0.05, time:condition = 0.025\nRandom effect parameters: site (arm) = 0.019, participant (arm) = 0.949, sigma (arm) = 0.223, site (thigh) = 0.190, participant (thigh) = 0.850, sigma (thigh) = 0.220\nRandom effects correlations between arm and thigh: site = 0.70, participant = 0.77\nSimulated to detect a difference (against null of zero), or equivalence (with a SESOI of 0.1), for time:condition\nSite number (k) fixed at 24, participant numbers (i) at sites varied 5:50, dropout propotion up to 0.15\n1000 simulations per combination of parameters, test, and model, \u03b1 = 0.01 (adjusted to 0.005 for outcomes analysed singly)")
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom",
+          plot.caption = element_text(size = 6))
 }
 

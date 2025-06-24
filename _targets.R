@@ -71,6 +71,18 @@ list(
     plot_ranef_cors,
     plot_check_ranef_cors(lp_data_prep, model_arm_lp_data, model_thigh_lp_data)
   ),
+  
+  tar_target(
+    plot_ranef_cors_tiff,
+    ggsave(
+      plot = plot_ranef_cors,
+      filename = "plots/plot_ranef_cors.tiff",
+      device = "tiff",
+      dpi = 300,
+      w = 10, 
+      h = 5
+    )
+  ),
 
   tar_target(
     sim_grid_separate,
@@ -84,5 +96,22 @@ list(
     ),
     pattern = map(sim_grid_separate),
     iteration = "list"
-  ) 
+  ),
+  
+  tar_target(
+    sim_plot,
+    plot_sim(sim_result_separate)
+  ),
+  
+  tar_target(
+    sim_plot_tiff,
+    ggsave(
+      plot = sim_plot,
+      filename = "plots/sim_plot.tiff",
+      device = "tiff",
+      dpi = 300,
+      w = 10, 
+      h = 8
+    )
+  )
 )
