@@ -307,24 +307,72 @@ sim_separate <- function(params) {
         sei = std.error  # Standard error
       )
     
-    meta_result_re <- rma(yi = yi, sei = sei, data = meta_input, method = "REML")
-    meta_result_fe <- rma(yi = yi, sei = sei, data = meta_input, method = "FE")
+    # meta_result_re <- rma(yi = yi, sei = sei, data = meta_input, method = "REML")
+    # meta_result_fe <- rma(yi = yi, sei = sei, data = meta_input, method = "FE")
+    # 
+    # meta_tests <- bind_rows(
+    #   tibble(
+    #     estimate = coef(meta_result_re),
+    #     se = meta_result_re$se,
+    #     p.value = meta_result_re$pval,
+    #     model = "meta_re"
+    #   ),
+    #   tibble(
+    #     estimate = coef(meta_result_fe),
+    #     se = meta_result_fe$se,
+    #     p.value = meta_result_fe$pval,
+    #     model = "meta_fe"
+    #   )
+    # ) |>
+    #   group_by(model) |>
+    #   mutate(
+    #     z_eq_lo = (estimate - (-0.1)) / se,
+    #     z_eq_hi = (estimate - 0.1) / se,
+    #     p_lo = 1 - pnorm(z_eq_lo),
+    #     p_hi = pnorm(z_eq_hi),
+    #     p.value.equiv = max(c(p_lo,p_hi)),
+    #     term = "time:cond_dummy"
+    #   ) |>
+    #   select(model, term, p.value, p.value.equiv)
     
-    meta_tests <- bind_rows(
-      tibble(
-        estimate = coef(meta_result_re),
-        se = meta_result_re$se,
-        p.value = meta_result_re$pval,
-        model = "meta_re"
-      ),
-      tibble(
-        estimate = coef(meta_result_fe),
-        se = meta_result_fe$se,
-        p.value = meta_result_fe$pval,
-        model = "meta_fe"
-      )
-    ) |>
-      group_by(model) |>
+    #### Section added to check inclusion of appropriate covariance of outcomes for meta-analyses
+    
+    vc <- vcov(model_all_outcome_fixed)
+    
+    beta_arm  <- fixef(model_all_outcome_fixed)["time:cond_dummy"]
+    beta_diff <- fixef(model_all_outcome_fixed)["time:cond_dummy:outcome_dummy"]
+    beta_thigh <- beta_arm + beta_diff
+    
+    var_arm   <- vc["time:cond_dummy", "time:cond_dummy"]
+    var_diff  <- vc["time:cond_dummy:outcome_dummy", 
+                    "time:cond_dummy:outcome_dummy"]
+    cov_ad    <- vc["time:cond_dummy", 
+                    "time:cond_dummy:outcome_dummy"]
+    
+    var_thigh <- var_arm + var_diff + 2 * cov_ad
+    cov_arm_thigh <- var_arm + cov_ad
+    
+    yi <- c(beta_arm, beta_thigh)
+    
+    V <- matrix(
+      c(var_arm, cov_arm_thigh,
+        cov_arm_thigh, var_thigh),
+      nrow = 2
+    )
+    
+    meta_result_mv <- rma.mv(
+      yi = yi,
+      V  = V,
+      mods = ~ 1,
+      method = "REML"
+    )
+    
+    meta_tests <- tibble(
+        estimate = coef(meta_result_mv),
+        se = meta_result_mv$se,
+        p.value = meta_result_mv$pval,
+        model = "meta_result_mv"
+      ) |>
       mutate(
         z_eq_lo = (estimate - (-0.1)) / se,
         z_eq_hi = (estimate - 0.1) / se,
@@ -334,6 +382,9 @@ sim_separate <- function(params) {
         term = "time:cond_dummy"
       ) |>
       select(model, term, p.value, p.value.equiv)
+    
+    
+    ####
     
     
     tests <- bind_rows(
