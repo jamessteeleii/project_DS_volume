@@ -113,5 +113,23 @@ list(
       w = 10, 
       h = 8
     )
+  ),
+  
+  #### Update to sample estimate for pre-reg
+  tar_target(
+    sim_plot_update,
+    plot_sim_update(sim_result_separate)
+  ),
+  
+  tar_target(
+    sim_plot_update_tiff,
+    ggsave(
+      plot = sim_plot_update,
+      filename = "plots/sim_plot_update.tiff",
+      device = "tiff",
+      dpi = 300,
+      w = 10, 
+      h = 8
+    )
   )
 )
