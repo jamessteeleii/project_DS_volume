@@ -36,7 +36,7 @@ prep_lp_data <- function(data) {
     ) |>
     select(site_id, participant_id, condition, cond_dummy, time, timepoint, muscle, estimated_ma)
   
-  # calculate z-score numerator
+  # calculate z-score denominator
   std_lm_arm <- lm(estimated_ma ~ cond_dummy,
                    data = data |>
                      filter(muscle == "arm"))
@@ -703,4 +703,233 @@ plot_sim_update <- function(sims) {
     theme_bw() +
     theme(legend.position = "bottom",
           plot.caption = element_text(size = 6))
+}
+
+#### Functions for final data prep and primary pre-registered analysis ----
+
+get_z_denominators <- function(data) {
+  
+  # calculate z-score denominators
+  std_lm_arm <- lm(estimated_ma ~ cond_dummy,
+                   data = data |>
+                     filter(muscle == "arm"))
+  
+  std_arm <- summary(std_lm_arm)$sigma
+  
+  
+  std_lm_thigh <- lm(estimated_ma ~ cond_dummy,
+                     data = data |>
+                       filter(muscle == "thigh"))
+  
+  std_thigh <- summary(std_lm_thigh)$sigma
+  
+  
+  denominators <- tibble(
+    std_arm = std_arm,
+    std_thigh = std_thigh
+  )
+  
+  return(denominators)
+  
+}
+
+prep_volume_data_hypertrophy <- function(data, denominators) {
+  
+  long_data <- data |>
+    mutate(
+      thigh_ma_1 =(4.68*thigh_circum_1)-(2.09*thigh_skinfold_1)-80.99,
+      thigh_ma_2 =(4.68*thigh_circum_2)-(2.09*thigh_skinfold_2)-80.99,
+      thigh_ma_3 =(4.68*thigh_circum_3)-(2.09*thigh_skinfold_3)-80.99,
+      arm_ma_1 = if_else(sex == "M" ,((arm_circum_1 - (pi * (arm_skinfold_1/10)))^2 / (4*pi))-10, ((arm_circum_1 - (pi * (arm_skinfold_1/10)))^2 / (4*pi))-6.5),
+      arm_ma_2 = if_else(sex == "M" ,((arm_circum_2 - (pi * (arm_skinfold_2/10)))^2 / (4*pi))-10, ((arm_circum_2 - (pi * (arm_skinfold_2/10)))^2 / (4*pi))-6.5),
+      arm_ma_3 = if_else(sex == "M" ,((arm_circum_3 - (pi * (arm_skinfold_3/10)))^2 / (4*pi))-10, ((arm_circum_3 - (pi * (arm_skinfold_3/10)))^2 / (4*pi))-6.5)
+    ) |>
+    select(site_id, participant_id, condition, time, timepoint, contains("ma_")) |>
+    pivot_longer(6:11,
+                 names_to = "muscle",
+                 values_to = "estimated_ma") |>
+    mutate(
+      measurement = case_when(
+        str_detect(muscle, "1") == TRUE ~ 1,
+        str_detect(muscle, "2") == TRUE ~ 2,
+        str_detect(muscle, "3") == TRUE ~ 3
+      ),
+      muscle = case_when(
+        str_detect(muscle, "thigh") == TRUE ~ "thigh",
+        str_detect(muscle, "arm") == TRUE ~ "arm"
+      )
+    ) |>
+    mutate(cond_dummy = case_when(
+      condition == "low" ~ -0.5,
+      condition == "high" ~ 0.5
+    ),
+    ) |>
+    mutate(
+      estimated_ma_z = case_when(
+        muscle == "thigh" ~ (estimated_ma - mean(estimated_ma, na.rm=TRUE)) / denominators$std_thigh,
+        muscle == "arm" ~ (estimated_ma - mean(estimated_ma, na.rm=TRUE)) / denominators$std_arm,
+        .default = NA_real_
+      )
+    ) |>
+    mutate(
+      outcome_dummy = case_when(
+        muscle == "arm" ~ -0.5,
+        muscle == "thigh" ~ 0.5
+      )
+    ) |>
+    select(site_id, participant_id, condition, cond_dummy, time, timepoint, muscle, outcome_dummy, estimated_ma, estimated_ma_z)
+  
+  return(long_data)
+}
+
+fit_model_get_results_hypertrophy <- function(data) {
+  
+  model <- glmmTMB(estimated_ma_z ~ time + time:cond_dummy + (1|site_id) + (1 | participant_id),
+                   dispformula = ~ outcome_dummy,
+                   data = data, REML = TRUE)
+  
+  tests_90 <- hypotheses(model, equivalence = c(-0.1,0.1),  df = insight::get_df(model),
+                      conf_level = .9)
+  
+  tests_95 <- hypotheses(model, equivalence = c(-0.1,0.1),  df = insight::get_df(model),
+                         conf_level = .95)
+  
+  results <- tibble(
+    model = list(model),
+    results_90 = list(tests_90),
+    results_95 = list(tests_95)
+  )
+  
+}
+
+plot_hypertrophy_results <- function(data, results) {
+  
+  raw_plot_arm <- data |>
+    filter(muscle == "arm" & !is.na(condition)) |>
+    ggplot(aes(x=timepoint, y=estimated_ma, color=condition, fill=condition)) +
+    geom_line(aes(group=interaction(participant_id)),
+              stat = "smooth", se = FALSE, method = "lm",
+              alpha = 0.25, size = 0.5) +
+    stat_slabinterval(data = filter(data, timepoint == "Pre" & muscle == "arm" & !is.na(condition)),
+                      point_interval = "mean_qi",
+                      .width = .95,
+                      side = c("left"),
+                      slab_alpha = 0.25,
+                      position = position_dodge(w=-0.1)) +
+    stat_slabinterval(data = filter(data, timepoint == "Post" & muscle == "arm" & !is.na(condition)),
+                      point_interval = "mean_qi",
+                      .width = .95,
+                      side = c("right"),
+                      slab_alpha = 0.25,
+                      position = position_dodge(w=-0.1)) +
+    scale_color_manual(values = c("#56B4E9","#E69F00")) +
+    scale_fill_manual(values = c("#56B4E9","#E69F00")) +
+    labs(
+      x = "Timepoint",
+      y = expression(paste("Estimated Arm Muscle CSA (",cm^2,")")),
+      title = "Arm Muscle",
+      color = "Condition",
+      fill = "Condition"
+    ) +
+    theme_classic(base_size = 10) +
+    theme(legend.position = "bottom")
+  
+  raw_plot_thigh <- data |>
+    filter(muscle == "thigh" & !is.na(condition)) |>
+    ggplot(aes(x=timepoint, y=estimated_ma, color=condition, fill=condition)) +
+    geom_line(aes(group=interaction(participant_id)),
+              stat = "smooth", se = FALSE, method = "lm",
+              alpha = 0.25, size = 0.5) +
+    stat_slabinterval(data = filter(data, timepoint == "Pre" & muscle == "thigh" & !is.na(condition)),
+                      point_interval = "mean_qi",
+                      .width = .95,
+                      side = c("left"),
+                      slab_alpha = 0.25,
+                      position = position_dodge(w=-0.1)) +
+    stat_slabinterval(data = filter(data, timepoint == "Post" & muscle == "thigh" & !is.na(condition)),
+                      point_interval = "mean_qi",
+                      .width = .95,
+                      side = c("right"),
+                      slab_alpha = 0.25,
+                      position = position_dodge(w=-0.1)) +
+    scale_color_manual(values = c("#56B4E9","#E69F00")) +
+    scale_fill_manual(values = c("#56B4E9","#E69F00")) +
+    labs(
+      x = "Timepoint",
+      y = expression(paste("Estimated Thigh Muscle CSA (",cm^2,")")),
+      title = "Thigh Muscle",
+      color = "Condition",
+      fill = "Condition"
+    ) +
+    theme_classic(base_size = 10) +
+    theme(legend.position = "bottom")
+  
+  time_plot <- as.data.frame(results$results_95) |>
+    filter(term == "conditional_time") |>
+    ggplot(aes(y=estimate)) +
+    geom_hline(yintercept = 0, linetype = 3) +
+    geom_hline(yintercept = c(-0.1,0.1), linetype = 2) +
+    geom_pointinterval(aes(ymin=conf.low, ymax=conf.high),
+                       size = 5, linewidth = 1) +
+    geom_interval(data = as.data.frame(results$results_90) |>
+                    filter(term == "conditional_time"),
+                   aes(ymin=conf.low, ymax=conf.high),
+                   linewidth = 1.5) +
+    annotate("text", x = 0.25, y = c(-0.09,0.09),
+             label = "Smallest Effect Size of Interest Limits",
+             size = 2) +
+    labs(
+      y = "Standardised Mean Effect",
+      title = "Main effect of time"
+    ) +
+    theme_classic(base_size = 10) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_blank()
+    )
+  
+  interact_plot <- as.data.frame(results$results_95) |>
+    filter(term == "conditional_time:cond_dummy") |>
+    ggplot(aes(y=estimate)) +
+    geom_hline(yintercept = 0, linetype = 3) +
+    geom_hline(yintercept = c(-0.1,0.1), linetype = 2) +
+    geom_pointinterval(aes(ymin=conf.low, ymax=conf.high),
+                       size = 5, linewidth = 1) +
+    geom_interval(data = as.data.frame(results$results_90) |>
+                    filter(term == "conditional_time:cond_dummy"),
+                  aes(ymin=conf.low, ymax=conf.high),
+                  linewidth = 1.5) +
+    geom_label(aes(x = 0, label = glue::glue("Equivalence Test\np = {scales::pvalue(p.value.equiv, 0.001)}")),
+               position = position_nudge(x = 0.25),
+               size = 2.5) + 
+    annotate("text", x = 0.25, y = c(-0.09,0.09),
+             label = "Smallest Effect Size of Interest Limits",
+             size = 2) +
+    labs(
+      y = "Standardised Mean Effect",
+      title = "Condition by time interaction"
+    ) +
+    theme_classic(base_size = 10) +
+    theme(
+      axis.title.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_blank()
+    )
+  
+  
+  raw_plots <- (raw_plot_arm | raw_plot_thigh) +
+    plot_annotation(title = "Primary Pre-registered Hypertrophy Outcomes",
+                    caption = "Raw means [95% quantile intervals] and participant level unpooled predictions") +
+    plot_layout(guides = "collect", axes = "collect") &
+    theme(legend.position = "bottom")
+  
+  coef_plots <- (time_plot / interact_plot) +
+    plot_layout(axes = "collect") +
+    plot_annotation(caption = "Thick error bars are 90% and thin error bars 95% confidence intervals")
+  
+  combined_plot <- wrap_elements(raw_plots) / wrap_elements(coef_plots) 
+  
+  return(combined_plot)
+  
 }

@@ -18,6 +18,8 @@ tar_option_set(
                "metafor",
                "glmmTMB",
                "broom.mixed",
+               "ggdist",
+               "patchwork",
                # "furrr",
                "glue",
                "progressr"),
@@ -131,5 +133,55 @@ list(
       w = 10, 
       h = 8
     )
+  ),
+  
+  #### Final data and analysis ----
+  
+  # We use the lengthened partial study dataset to generate the denominators for standardising
+  # This is because we recruited a much smaller sample here and so the LP data is a better estimate of sigma
+  
+  tar_target(
+    denominators,
+    get_z_denominators(lp_data_prep)
+  ),
+  
+  tar_target(
+    volume_data_file,
+    here("data", "pd_volume_data.csv"),
+    format = "file"
+  ),
+  
+  tar_target(
+    volume_data,
+    read_csv(volume_data_file)
+  ),
+  
+  tar_target(
+    volume_data_prep,
+    prep_volume_data_hypertrophy(volume_data, denominators)
+  ),
+  
+  tar_target(
+    results_hypertrophy,
+    fit_model_get_results_hypertrophy(volume_data_prep)
+  ),
+  
+  tar_target(
+    plots_hypertrophy,
+    plot_hypertrophy_results(volume_data_prep, results_hypertrophy)
+  ),
+  
+  tar_target(
+    plots_hypertrophy_tiff,
+    ggsave(
+      plot = plots_hypertrophy,
+      filename = "plots/hypertrophy_plot.tiff",
+      device = "tiff",
+      dpi = 300,
+      width = 6,
+      height = 9
+    )
   )
+  
+  
 )
