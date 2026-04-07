@@ -1,4 +1,4 @@
-##### Functions for pre-registration and sample size estimation ----
+#### Functions for pre-registration and sample size estimation ----
 prep_lp_data <- function(data) {
   data <- data |>
     filter(time != "1") |>
