@@ -869,6 +869,13 @@ plot_hypertrophy_results <- function(data, results) {
     ggplot(aes(y=estimate)) +
     geom_hline(yintercept = 0, linetype = 3) +
     geom_hline(yintercept = c(-0.1,0.1), linetype = 2) +
+    annotate("rect", 
+             xmin = -Inf, xmax = Inf, 
+             ymin = 0.04176119, ymax = 0.05676972,
+             alpha = 0.5) +
+    annotate("text", x = 0.25, y = 0.0493,
+             label = "Predicted Time Effect Interval Estimate from Meta-Regression",
+             size = 1.5) +
     geom_pointinterval(aes(ymin=conf.low, ymax=conf.high),
                        size = 5, linewidth = 1) +
     geom_interval(data = as.data.frame(results$results_90) |>
