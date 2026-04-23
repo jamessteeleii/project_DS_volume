@@ -200,7 +200,7 @@ generate_simulation_grid_separate <- function(model_arm, model_thigh, ranef_cors
     site_n = 24,
     measurements_n = 3,
     dropout_prop = c(0,0.15)
-  ) %>%
+  ) |>
     mutate(
       b0 = 0, b_time = 0.05, b_cond_time = 0.025,
       sd_site_arm = variances_arm$site_id[1],
@@ -247,12 +247,12 @@ sim_separate <- function(params) {
     
     # simulate loss to follow
     follow_up_participants <- data |>
-      filter(time == 1) %>%
-      distinct(participant_id) %>%
+      filter(time == 1) |>
+      distinct(participant_id) |>
       slice_sample(prop = 1-dropout_prop)
     
     # Filter the original data
-    data <- data %>%
+    data <- data |>
       filter(
         time == 0 | 
           (time == 1 & participant_id %in% follow_up_participants$participant_id)
@@ -290,18 +290,18 @@ sim_separate <- function(params) {
     model_lower <- lmer(ma_z ~ time + time:cond_dummy + (1|site_id) + (1 | participant_id),
                       data = data_thigh, REML = TRUE)
     
-    coef_upper <- tidy(model_upper, effects = "fixed") %>%
-      filter(term == "time:cond_dummy") %>%
+    coef_upper <- tidy(model_upper, effects = "fixed") |>
+      filter(term == "time:cond_dummy") |>
       select(estimate, std.error)
     
-    coef_lower <- tidy(model_lower, effects = "fixed") %>%
-      filter(term == "time:cond_dummy") %>%
+    coef_lower <- tidy(model_lower, effects = "fixed") |>
+      filter(term == "time:cond_dummy") |>
       select(estimate, std.error)
     
     meta_input <- bind_rows(
       mutate(coef_upper, study = "upper"),
       mutate(coef_lower, study = "lower")
-    ) %>%
+    ) |>
       rename(
         yi = estimate,   # Effect size
         sei = std.error  # Standard error
@@ -744,8 +744,8 @@ prep_volume_data_hypertrophy <- function(data, denominators) {
       arm_ma_2 = if_else(sex == "M" ,((arm_circum_2 - (pi * (arm_skinfold_2/10)))^2 / (4*pi))-10, ((arm_circum_2 - (pi * (arm_skinfold_2/10)))^2 / (4*pi))-6.5),
       arm_ma_3 = if_else(sex == "M" ,((arm_circum_3 - (pi * (arm_skinfold_3/10)))^2 / (4*pi))-10, ((arm_circum_3 - (pi * (arm_skinfold_3/10)))^2 / (4*pi))-6.5)
     ) |>
-    select(site_id, participant_id, condition, time, timepoint, contains("ma_")) |>
-    pivot_longer(6:11,
+    select(site_id, participant_id, tester_id, condition, time, timepoint, contains("ma_")) |>
+    pivot_longer(7:12,
                  names_to = "muscle",
                  values_to = "estimated_ma") |>
     mutate(
@@ -777,7 +777,7 @@ prep_volume_data_hypertrophy <- function(data, denominators) {
         muscle == "thigh" ~ 0.5
       )
     ) |>
-    select(site_id, participant_id, condition, cond_dummy, time, timepoint, muscle, outcome_dummy, estimated_ma, estimated_ma_z)
+    select(site_id, participant_id, tester_id, condition, cond_dummy, time, timepoint, muscle, outcome_dummy, estimated_ma, estimated_ma_z)
   
   return(long_data)
 }
@@ -942,5 +942,77 @@ plot_hypertrophy_results <- function(data, results) {
   combined_plot <- wrap_elements(raw_plots) / wrap_elements(coef_plots) 
   
   return(combined_plot)
+  
+}
+
+#### Additional secondary and sensitivity analyses ----
+prep_volume_data_strength <- function(data) {
+  
+  data_prep <- data |>
+  mutate(
+    session = case_when(
+      workout == "A" ~ session * 2 - 1,
+      workout == "B" ~ session * 2,
+      .default = session
+    )
+  ) |>
+  mutate(
+    cond_dummy = case_when(
+      condition == "high" ~ 0.5,
+      condition == "low" ~ -0.5,
+      .default = NA_real_
+    ),
+    time_scaled = session / 36
+  ) |>
+    mutate(
+      weight = weight / 2.205,
+      onerm = weight * (1 + (0.033 * reps))
+    ) |>
+    group_by(exercise) |>
+    group_modify(~{
+      
+      std_lm <- lm(onerm ~ cond_dummy, data = .x)
+      sigma <- summary(std_lm)$sigma
+      
+      .x |>
+        mutate(
+          estimated_onerm_z = (onerm - mean(onerm, na.rm = TRUE)) / sigma
+        )
+    }) |>
+    ungroup()
+    
+  return(data_prep)
+}
+
+
+fit_model_get_results_strength <- function(data) {
+  
+  model <- glmmTMB(estimated_onerm_z ~ time_scaled + time_scaled:cond_dummy + (1|site_id) + (1 | participant_id),
+                          dispformula = ~ exercise,
+                          data = data, REML = TRUE)
+  
+  results <- hypotheses(model,  df = insight::get_df(model)) 
+  
+  return(results)
+  
+}
+
+fit_tester_model_get_results_hypertrophy <- function(data) {
+  
+  model <- glmmTMB(estimated_ma_z ~ time + time:cond_dummy + (1|site_id) + (1 | participant_id) + (1 | tester_id),
+                   dispformula = ~ outcome_dummy,
+                   data = data, REML = TRUE)
+  
+  tests_90 <- hypotheses(model, equivalence = c(-0.1,0.1),  df = insight::get_df(model),
+                         conf_level = .9)
+  
+  tests_95 <- hypotheses(model, equivalence = c(-0.1,0.1),  df = insight::get_df(model),
+                         conf_level = .95)
+  
+  results <- tibble(
+    model = list(model),
+    results_90 = list(tests_90),
+    results_95 = list(tests_95)
+  )
   
 }

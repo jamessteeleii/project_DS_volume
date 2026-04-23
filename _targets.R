@@ -135,7 +135,7 @@ list(
     )
   ),
   
-  #### Final data and analysis ----
+  #### Final data and pre-registered primary analysis ----
   
   # We use the lengthened partial study dataset to generate the denominators for standardising
   # This is because we recruited a much smaller sample here and so the LP data is a better estimate of sigma
@@ -181,7 +181,35 @@ list(
       width = 6,
       height = 9
     )
-  )
+  ),
   
+  #### Secondary exploratory strength data and analyss ----
+  tar_target(
+    volume_workouts_data_file,
+    here("data", "pd_volume_workouts_data.csv"),
+    format = "file"
+  ),
+  
+  tar_target(
+    volume_workouts_data,
+    read_csv(volume_workouts_data_file)
+  ),
+  
+  tar_target(
+    volume_data_strength_prep,
+    prep_volume_data_strength(volume_workouts_data)
+  ),
+  
+  tar_target(
+    results_strength,
+    fit_model_get_results_strength(volume_data_strength_prep)
+  ),
+  
+  
+  #### Sensitivity analysis with random effect for tester_id
+  tar_target(
+    results_tester_hypertrophy,
+    fit_tester_model_get_results_hypertrophy(volume_data_prep)
+  )
   
 )
